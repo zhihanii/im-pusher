@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package api.protocol;
+
+option go_package = "github.com/zhihanii/im-pusher/api/protocol;protocol";
+
+message BaseReply {
+  int32 status_code = 1;  //状态码: 0-成功, 其他值-失败
+  string status_message = 2;
+  int64 service_time = 3;
+}

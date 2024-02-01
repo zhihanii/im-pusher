@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package api.broker;
+
+option go_package = "github.com/zhihanii/im-pusher/api/broker;broker";
+
+import "api/protocol/message.proto";
+import "api/protocol/base.proto";
+
+service Broker {
+  rpc Push(PushReq) returns (PushReply) {}
+  rpc PushMsg(PushMsgReq) returns (PushMsgReply) {}
+  rpc Broadcast(BroadcastReq) returns (BroadcastReply) {}
+  rpc BroadcastRoom(BroadcastRoomReq) returns (BroadcastRoomReply) {}
+  rpc Rooms(RoomsReq) returns (RoomsReply) {}
+}
+
+message PushReq {
+  repeated protocol.TransMessage messages = 1;
+}
+
+message PushReply {
+  protocol.BaseReply base_reply = 1;
+}
+
+message PushMsgReq {
+  int32 proto_op = 1;
+  protocol.Message msg = 2;
+  repeated string keys = 3;
+}
+
+message PushMsgReply {
+
+}
+
+message BroadcastReq {
+  int32 proto_op = 1;
+  protocol.Message msg = 2;
+  int32 speed = 3;
+}
+
+message BroadcastReply {
+
+}
+
+message BroadcastRoomReq {
+  protocol.Message msg = 1;
+  string room_id = 2;
+}
+
+message BroadcastRoomReply {
+
+}
+
+message RoomsReq {
+
+}
+
+message RoomsReply {
+  map<string,bool> rooms = 1;
+}

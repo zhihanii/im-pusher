@@ -1,0 +1,21 @@
+grpc:
+  service-name: broker-service
+  network: tcp
+  bind-address: 127.0.0.1
+  bind-port: 8101
+  weight: 10
+
+insecure:
+  bind-address: 127.0.0.1
+  bind-port: 8201
+
+etcd:
+  endpoints: ["192.168.88.101:2379"]
+  LeaseExpire: 15
+
+logger:
+  level: info
+  format: console
+  enable-color: false
+  output-paths: ["/opt/broker/log/broker.log"]
+  name: broker-logger

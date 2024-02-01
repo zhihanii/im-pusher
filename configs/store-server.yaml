@@ -1,0 +1,17 @@
+kafka:
+  brokers: ["192.168.88.101:19092", "192.168.88.101:29092", "192.168.88.101:39092"]
+
+mysql:
+  host: 192.168.88.101
+  port: 3306
+  user: zhi
+  password: 123456
+  database: cloud
+  params: charset=utf8mb4&parseTime=True&loc=Local
+
+logger:
+  level: info
+  format: console
+  enable-color: false
+  output-paths: [ "/opt/store/log/store-logs.log" ]
+  name: store-logger

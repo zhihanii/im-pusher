@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package api.dispatcher;
+
+option go_package = "github.com/zhihanii/im-pusher/api/dispatcher;dispatcher";
+
+import "api/protocol/message.proto";
+import "api/protocol/base.proto";
+
+service Dispatcher {
+  rpc Push(PushReq) returns (PushReply) {}
+}
+
+message PushReq {
+  repeated uint64 receivers = 1;
+  protocol.Message message = 2;
+}
+
+message PushReply {
+  protocol.BaseReply base_reply = 1;
+  repeated uint64 offline_members = 2;
+}
