@@ -2,26 +2,21 @@ package dispatcher
 
 import (
 	"fmt"
-	"github.com/IBM/sarama"
 	"github.com/redis/go-redis/v9"
-	pb "github.com/zhihanii/im-pusher/api/dispatcher"
-	"github.com/zhihanii/im-pusher/internal/dispatcher/biz"
 	"github.com/zhihanii/im-pusher/internal/dispatcher/conf"
 	"github.com/zhihanii/im-pusher/internal/dispatcher/data"
-	"github.com/zhihanii/im-pusher/internal/dispatcher/service"
-	"github.com/zhihanii/registry"
+	"github.com/zhihanii/im-pusher/internal/dispatcher/server"
 	"github.com/zhihanii/zlog"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"google.golang.org/grpc"
 	"os"
 	"os/signal"
 	"syscall"
 )
 
 type appServer struct {
-	c          *conf.Config
-	grpcServer *grpcServer
-	delayFunc  func()
+	c                *conf.Config
+	delayFunc        func()
+	dispatcherServer *server.Server
 }
 
 type preparedServer struct {
@@ -29,9 +24,9 @@ type preparedServer struct {
 }
 
 func (s preparedServer) Run() error {
-	s.grpcServer.Run()
-
 	s.delayFunc()
+
+	s.dispatcherServer.Run()
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -44,12 +39,6 @@ func (s preparedServer) Run() error {
 
 func createServer(c *conf.Config) (*appServer, error) {
 	zlog.Init(c.LoggerOptions)
-	opts := []grpc.ServerOption{}
-	grpcSrv := grpc.NewServer(opts...)
-	config := sarama.NewConfig()
-	config.Producer.Return.Successes = true
-	config.Producer.Retry.Max = 5
-	config.Producer.RequiredAcks = sarama.WaitForAll
 	cfg := clientv3.Config{
 		Endpoints: c.EtcdOptions.Endpoints,
 	}
@@ -57,34 +46,15 @@ func createServer(c *conf.Config) (*appServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := biz.NewMessageSender(c, etcdClient)
+	s := server.NewMessageSender(c, etcdClient)
+	addr := fmt.Sprintf("%s:%d", c.RedisOptions.Host, c.RedisOptions.Port)
+	zlog.Infof("redis addr: %s", addr)
 	redisCli := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", c.RedisOptions.Host, c.RedisOptions.Port),
+		Addr: addr,
 	})
-	d := data.NewData(nil, redisCli)
+	d := data.NewData(redisCli)
 	repo := data.NewDispatcherRepo(c, d)
-	dh, err := biz.NewDispatchHandler(c, s, repo)
-	if err != nil {
-		return nil, err
-	}
-	svc, err := service.New(dh)
-	if err != nil {
-		return nil, err
-	}
-	pb.RegisterDispatcherServer(grpcSrv, svc)
-
-	gs := &grpcServer{
-		Server: grpcSrv,
-		endpoint: &registry.Endpoint{
-			ServiceName: c.GrpcOptions.ServiceName,
-			Network:     c.GrpcOptions.Network,
-			Address:     c.GrpcOptions.BindAddress,
-			Port:        c.GrpcOptions.BindPort,
-			Weight:      c.GrpcOptions.Weight,
-		},
-		//etcdClient: etcdClient,
-	}
-	gs.etcdRegistry, err = registry.NewEtcdRegistryWithClient(etcdClient, int64(c.EtcdOptions.LeaseExpire))
+	srv := server.New(c, s, repo)
 	if err != nil {
 		return nil, err
 	}
@@ -93,10 +63,12 @@ func createServer(c *conf.Config) (*appServer, error) {
 		s.Init()
 	}
 
+	//s.Init()
+
 	return &appServer{
-		c:          c,
-		grpcServer: gs,
-		delayFunc:  delayFunc,
+		c:                c,
+		delayFunc:        delayFunc,
+		dispatcherServer: srv,
 	}, nil
 }
 

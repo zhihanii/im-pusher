@@ -4,7 +4,6 @@ go 1.20
 
 require (
 	github.com/IBM/sarama v1.40.1
-	github.com/cloudwego/hertz v0.8.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang/glog v1.1.2
 	github.com/google/uuid v1.3.1
@@ -15,9 +14,13 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/zhenjl/cityhash v0.0.0-20131128155616-cdd6a94144ab
 	github.com/zhihanii/app v0.0.1
+	github.com/zhihanii/loadbalance v0.0.2
 	github.com/zhihanii/registry v0.0.5
 	github.com/zhihanii/retry v0.0.1
+	github.com/zhihanii/taskpool v0.0.2
+	github.com/zhihanii/websocket v0.0.0-20240202095032-ba0514ca3588
 	github.com/zhihanii/zlog v0.0.2
+	github.com/zhihanii/znet v0.0.15
 	go.etcd.io/etcd/client/v3 v3.5.11
 	google.golang.org/grpc v1.60.1
 	google.golang.org/protobuf v1.32.0
@@ -28,12 +31,12 @@ require (
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bytedance/go-tagexpr/v2 v2.9.2 // indirect
-	github.com/bytedance/gopkg v0.0.0-20231219111115-a5eedbe96960 // indirect
+	github.com/bytedance/gopkg v0.0.0-20240202110943-5e26950c5e57 // indirect
 	github.com/bytedance/sonic v1.10.2 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect
 	github.com/chenzhuoyu/iasm v0.9.1 // indirect
-	github.com/cloudwego/kitex v0.8.0 // indirect
+	github.com/cloudwego/hertz v0.8.0 // indirect
 	github.com/cloudwego/netpoll v0.5.1 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
@@ -49,6 +52,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.14.0 // indirect
+	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
@@ -99,7 +103,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/zhihanii/discovery v0.0.2 // indirect
-	github.com/zhihanii/loadbalance v0.0.2 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.11 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.11 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

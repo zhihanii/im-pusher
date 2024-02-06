@@ -23,10 +23,23 @@ message TransMessage { //只用于内部消息传输
   bytes data = 8;
 }
 
-message ChatMessage {
+message DispatcherMessage {
+  repeated uint64 receivers = 1;
+  uint32 operation = 2; //区分消息类型
+  uint32 sequence = 3;
+  bytes data = 4; //消息内容
+}
+
+message ChatSendMessage {
   uint64 conversation_id = 1;
   uint64 from = 2;
   uint64 to = 3;
+  bytes content = 4;
+}
+
+message ChatReceiveMessage {
+  uint64 conversation_id = 1;
+  uint64 from = 2;
   bytes content = 4;
 }
 

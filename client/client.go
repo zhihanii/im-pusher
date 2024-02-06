@@ -62,6 +62,8 @@ type Client struct {
 	timer          *timingwheel.TimingWheel
 	retryer        retry.Retryer
 	handler        Handler
+
+	authCh chan struct{}
 }
 
 func New(token []byte, mid uint64, flushFrequency time.Duration, addr string) *Client {
@@ -81,6 +83,7 @@ func New(token []byte, mid uint64, flushFrequency time.Duration, addr string) *C
 		mackBuffer:     newAckSet(),
 		flushFrequency: flushFrequency,
 		retryer:        retry.NewRetryer(retry.WithMaxRetryTimes(5), retry.WithMaxDuration(time.Second*8)),
+		authCh:         make(chan struct{}),
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	c.timer = timingwheel.NewTimingWheel(time.Second, 60)
@@ -140,6 +143,10 @@ func (c *Client) Shutdown() {
 	c.cancel()
 }
 
+func (c *Client) AuthChan() <-chan struct{} {
+	return c.authCh
+}
+
 func (c *Client) getNodeInstance() error {
 	res, err := c.httpClient.Get("http://127.0.0.1:8202/node-instance")
 	if err != nil {
@@ -183,7 +190,7 @@ func (c *Client) connect() error {
 		zlog.Errorf("dial: %v\n", err)
 		return err
 	}
-	//zlog.Infoln("成功与connect-server建立连接")
+	//zlog.Infoln("成功与broker建立连接")
 	return c.auth()
 }
 
@@ -198,6 +205,7 @@ func (c *Client) auth() error {
 		return err
 	} else {
 		//zlog.Infoln("发送auth消息成功")
+		c.authCh <- struct{}{}
 	}
 	return nil
 }
@@ -208,7 +216,7 @@ func (c *Client) Send(m *protocol.Message, ackKey string) {
 			c.send <- m
 			fail := make(chan struct{})
 			success := make(chan struct{})
-			waitAckDuration := 5 * time.Second
+			waitAckDuration := 15 * time.Second
 			task := c.timer.Add(waitAckDuration, func() {
 				fail <- struct{}{}
 			})
@@ -286,7 +294,7 @@ func (c *Client) SendWithNotify(m *protocol.Message, ackKey string) {
 			task.Cancel()
 			c.notifyMap.Delete(ackKey)
 			c.success <- m
-			//zlog.Infof("mid:%d, 成功收到notify", c.mid)
+			zlog.Infof("mid:%d, 成功收到notify", c.mid)
 		case <-fail:
 			c.notifyMap.Delete(ackKey)
 			c.fail <- m
@@ -319,7 +327,7 @@ func (c *Client) reader() {
 		c.wsConn.Close()
 	}()
 
-	hb := 5 * time.Second
+	hb := 60 * time.Second
 	task := c.timer.Add(hb, func() {
 		//若长时间未收到服务端的heartbeat, 则关闭连接
 		zlog.Infof("close connection, reason:heartbeat timeout")
@@ -362,16 +370,16 @@ read:
 			m.Data = nil
 
 		case protocol.Chat:
-			chatMessage := new(protocol.ChatMessage)
+			chatMessage := new(protocol.ChatReceiveMessage)
 			err = proto.Unmarshal(m.Data, chatMessage)
 			if err != nil {
 				zlog.Errorf("mid:%d, unmarshal:%v", c.mid, err)
 			} else {
-				//zlog.Infof("mid:%d, 收到chat消息, conversation_id:%d, from:%d, to:%d, content:%s",
-				//	c.mid, chatMessage.ConversationId, chatMessage.From, chatMessage.To, string(chatMessage.Content))
+				//zlog.Infof("mid:%d, 收到chat消息, conversation_id:%d, from:%d, content:%s",
+				//	c.mid, chatMessage.ConversationId, chatMessage.From, string(chatMessage.Content))
 			}
 			//zlog.Infof("mid:%d, 发送ack", c.mid)
-			c.sendAck([]byte(fmt.Sprintf("%d:%d:%d", chatMessage.From, chatMessage.To, m.Sequence)))
+			c.sendAck([]byte(fmt.Sprintf("%d:%d:%d", chatMessage.ConversationId, chatMessage.From, m.Sequence)))
 
 		case protocol.GroupChat:
 			groupChatMessage := new(protocol.GroupChatMessage)
@@ -427,7 +435,7 @@ func (c *Client) writer() {
 	hbMsg := &protocol.Message{
 		Operation: protocol.Heartbeat,
 	}
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Second * 3)
 	defer ticker.Stop()
 
 write:

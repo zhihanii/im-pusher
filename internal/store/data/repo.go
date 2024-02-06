@@ -11,7 +11,7 @@ import (
 )
 
 type StoreRepo interface {
-	StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatMessage) error
+	StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatSendMessage) error
 }
 
 type storeRepo struct {
@@ -36,6 +36,7 @@ func NewStoreRepo(c *conf.Config, data *Data) StoreRepo {
 
 func (r *storeRepo) initId() {
 	//在表数据量很大时, 响应时间会较长(319W响应时间=1.67s)
+	//todo 若kafka的消息未消费完, 则会造成主键冲突的问题
 	err := r.data.db.Raw("select count(*) from t_chat_message;").Scan(&r.id).Error
 	if err != nil {
 		zlog.Errorf("init id:%v", err)
@@ -45,7 +46,7 @@ func (r *storeRepo) initId() {
 }
 
 // StoreChatMessage 非并发安全
-func (r *storeRepo) StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatMessage) error {
+func (r *storeRepo) StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatSendMessage) error {
 	now := time.Now()
 	cm := &db.ChatMessage{
 		Base: database.Base{

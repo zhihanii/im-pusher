@@ -1,8 +1,10 @@
 package server
 
 import (
+	"context"
 	"github.com/IBM/sarama"
 	"github.com/zhihanii/im-pusher/api/protocol"
+	"github.com/zhihanii/taskpool"
 	"github.com/zhihanii/zlog"
 	"google.golang.org/protobuf/proto"
 )
@@ -10,12 +12,14 @@ import (
 var _ sarama.ConsumerGroupHandler = (*ConsumerGroupHandler)(nil)
 
 type ConsumerGroupHandler struct {
+	ctx   context.Context
 	s     *Server
 	ready chan bool
 }
 
 func newConsumerGroupHandler(s *Server) *ConsumerGroupHandler {
 	h := &ConsumerGroupHandler{
+		ctx:   context.Background(),
 		s:     s,
 		ready: make(chan bool),
 	}
@@ -41,16 +45,26 @@ func (h *ConsumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 				return nil
 			}
 			session.MarkMessage(msg, "")
-			cm := new(protocol.ChatSendMessage)
-			err = proto.Unmarshal(msg.Value, cm)
+			dm := new(protocol.DispatcherMessage)
+			err = proto.Unmarshal(msg.Value, dm)
 			if err != nil {
 				zlog.Errorf("unmarshal error:%v", err)
 				continue
 			}
-			err = h.s.repo.StoreChatMessage(nil, 100, cm)
-			if err != nil {
-				zlog.Errorf("store chat message:%v", err)
-			}
+			//zlog.Infof("handle push dm")
+			//chatReceiveMessage := new(protocol.ChatReceiveMessage)
+			//err = proto.Unmarshal(dm.Data, chatReceiveMessage)
+			//if err != nil {
+			//	zlog.Errorf("unmarshal error:%v", err)
+			//	continue
+			//}
+			//zlog.Infof("receivers:%v, operation:%d, sequence:%d", dm.Receivers, dm.Operation, dm.Sequence)
+			//zlog.Infof("chat receive message: %v", chatReceiveMessage)
+			//h.s.repo.GetMapping(context.Background(), 1)
+			ctx1 := context.Background()
+			taskpool.Submit(ctx1, func() {
+				h.s.HandlePush(h.ctx, dm.Receivers[0], dm)
+			})
 
 		case <-session.Context().Done():
 			return nil
