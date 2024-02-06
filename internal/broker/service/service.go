@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	pb "github.com/zhihanii/im-pusher/api/broker"
-	"github.com/zhihanii/im-pusher/api/protocol"
 	"github.com/zhihanii/im-pusher/internal/broker/errors"
 	"github.com/zhihanii/im-pusher/internal/broker/server"
 	"time"
@@ -23,32 +22,33 @@ func New(srv *server.Server) (*ConnectService, error) {
 
 func (s *ConnectService) Push(ctx context.Context, req *pb.PushReq) (reply *pb.PushReply, err error) {
 	for _, tm := range req.Messages {
-		for _, key := range tm.Keys {
-			bucket := s.srv.Bucket(key)
-			if bucket == nil {
-				continue
-			}
-			if ch := bucket.Channel(key); ch != nil {
-				//if !ch.NeedPush() {
-				//	continue
-				//}
-				//todo 构造protocol.Message
-				msg := &protocol.Message{
-					Operation: tm.Operation,
-					Sequence:  tm.Sequence,
-					Data:      tm.Data,
-				}
-
-				//err = proto.Unmarshal(tm.Data, msg)
-				//if err != nil {
-				//	return &pb.PushReply{}, err
-				//}
-
-				if err = ch.Push(msg); err != nil {
-					return
-				}
-			}
-		}
+		//for _, key := range tm.Keys {
+		//	bucket := s.srv.Bucket(key)
+		//	if bucket == nil {
+		//		continue
+		//	}
+		//	if ch := bucket.Channel(key); ch != nil {
+		//		//if !ch.NeedPush() {
+		//		//	continue
+		//		//}
+		//		//todo 构造protocol.Message
+		//		msg := &protocol.Message{
+		//			Operation: tm.Operation,
+		//			Sequence:  tm.Sequence,
+		//			Data:      tm.Data,
+		//		}
+		//
+		//		//err = proto.Unmarshal(tm.Data, msg)
+		//		//if err != nil {
+		//		//	return &pb.PushReply{}, err
+		//		//}
+		//
+		//		if err = ch.Push(msg); err != nil {
+		//			return
+		//		}
+		//	}
+		//}
+		s.srv.Push(tm)
 	}
 	return &pb.PushReply{}, nil
 }

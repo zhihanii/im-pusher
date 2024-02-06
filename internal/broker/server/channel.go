@@ -3,7 +3,7 @@ package server
 import (
 	"bufio"
 	"github.com/zhihanii/im-pusher/api/protocol"
-	"github.com/zhihanii/im-pusher/internal/broker/errors"
+	"github.com/zhihanii/websocket"
 	"sync"
 )
 
@@ -25,12 +25,15 @@ type Channel struct {
 
 	groupMux      sync.RWMutex
 	watchGroupIDs map[uint64]struct{}
+
+	conn *websocket.Conn
 }
 
-func NewChannel(bufferSize, messageChannelSize int) *Channel {
+func NewChannel(bufferSize, messageChannelSize int, conn *websocket.Conn) *Channel {
 	c := &Channel{
 		Room:   NewRoom("some"),
 		Buffer: NewCircularBuffer(16),
+		conn:   conn,
 	}
 	c.Buffer.Init(bufferSize)
 	c.msgCh = make(chan *protocol.Message, messageChannelSize)
@@ -77,12 +80,19 @@ func (c *Channel) NeedPushGroup(groupID uint64) bool {
 
 // Push 放入消息
 func (c *Channel) Push(m *protocol.Message) (err error) {
-	select {
-	case c.msgCh <- m:
-	default:
-		err = errors.ErrSignalFullMsgDropped
-	}
+	//select {
+	//case c.msgCh <- m:
+	//default:
+	//	err = errors.ErrSignalFullMsgDropped
+	//}
+
+	err = c.write(m)
 	return
+}
+
+func (c *Channel) write(m *protocol.Message) (err error) {
+	//downwardMessageCounter.Inc()
+	return m.WriteWebsocket(c.conn)
 }
 
 // Peek 取出消息

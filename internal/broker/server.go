@@ -84,6 +84,8 @@ func createServer(c *conf.Config) (*appServer, error) {
 		addr: fmt.Sprintf("%s:%d", c.InsecureServingOptions.BindAddress, c.InsecureServingOptions.BindPort),
 	}
 
+	srv.Start()
+
 	return &appServer{
 		c:          c,
 		grpcServer: gs,
