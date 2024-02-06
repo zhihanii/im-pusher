@@ -47,7 +47,7 @@ type logicRepo struct {
 	data        *Data
 	redisExpire time.Duration
 
-	msgCh chan *protocol.ChatMessage
+	msgCh chan *protocol.DispatcherMessage
 	//workers []*worker
 }
 
@@ -57,7 +57,7 @@ func NewLogicRepo(c *conf.Config, data *Data, redisExpire time.Duration) biz.Log
 		data:        data,
 		redisExpire: redisExpire,
 	}
-	r.msgCh = make(chan *protocol.ChatMessage, 10000)
+	r.msgCh = make(chan *protocol.DispatcherMessage, 10000)
 	//for i := 0; i < 1; i++ {
 	//	r.workers = append(r.workers, newWorker(c, r, r.msgCh))
 	//}
@@ -68,9 +68,9 @@ func NewLogicRepo(c *conf.Config, data *Data, redisExpire time.Duration) biz.Log
 func (r *logicRepo) run() {
 	var err error
 	for msg := range r.msgCh {
-		err = r.pushChatMessageToKafka(nil, msg)
+		err = r.pushMessage(nil, msg)
 		if err != nil {
-			zlog.Errorf("push chat message to kafka:%v", err)
+			zlog.Errorf("push message: %v", err)
 		}
 	}
 }
@@ -110,21 +110,21 @@ func (r *logicRepo) DelMapping(ctx context.Context, memberId uint64, key, server
 	return
 }
 
-func (r *logicRepo) GetMapping(ctx context.Context, memberId uint64) (res map[string]string, err error) {
-	strs, err := getMappingScript.Run(ctx, r.data.redisCli,
-		[]string{keyMidServer(memberId)}).StringSlice()
-	if err != nil {
-
-	}
-	n := len(strs)
-	if n > 0 && n%2 == 1 {
-		//log
-	}
-	for i := 0; i < n-1; i += 2 {
-		res[strs[i]] = strs[i+1]
-	}
-	return
-}
+//func (r *logicRepo) GetMapping(ctx context.Context, memberId uint64) (res map[string]string, err error) {
+//	strs, err := getMappingScript.Run(ctx, r.data.redisCli,
+//		[]string{keyMidServer(memberId)}).StringSlice()
+//	if err != nil {
+//
+//	}
+//	n := len(strs)
+//	if n > 0 && n%2 == 1 {
+//		//log
+//	}
+//	for i := 0; i < n-1; i += 2 {
+//		res[strs[i]] = strs[i+1]
+//	}
+//	return
+//}
 
 type OfflineMsg struct {
 	Operation int32
@@ -285,7 +285,7 @@ func (r *logicRepo) DelServerOnline(ctx context.Context, server string) (err err
 	return
 }
 
-func (r *logicRepo) StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatMessage) error {
+func (r *logicRepo) StoreChatMessage(ctx context.Context, seq uint32, chatMessage *protocol.ChatSendMessage) error {
 	now := time.Now()
 	cm := &db.ChatMessage{
 		Base: database.Base{
@@ -385,18 +385,35 @@ func (r *logicRepo) DeleteGroupChatOfflineMessage(ctx context.Context, groupId, 
 		Delete(&db.GroupChatOfflineMessage{}).Error
 }
 
-func (r *logicRepo) PushChatMessageToKafka(ctx context.Context, chatMessage *protocol.ChatMessage) {
-	r.msgCh <- chatMessage
+//func (r *logicRepo) PushChatMessageToKafka(ctx context.Context, chatMessage *protocol.ChatSendMessage) {
+//	r.msgCh <- chatMessage
+//}
+
+//func (r *logicRepo) pushChatMessageToKafka(ctx context.Context, chatMessage *protocol.ChatSendMessage) (err error) {
+//	b, err := proto.Marshal(chatMessage)
+//	if err != nil {
+//		return
+//	}
+//	m := &sarama.ProducerMessage{
+//		Topic: "topic_chat_message",
+//		//Key:   sarama.StringEncoder(keys[0]),
+//		Value: sarama.ByteEncoder(b),
+//	}
+//	r.data.kafkaCli.SendMessageAsync(m)
+//	return
+//}
+
+func (r *logicRepo) PushMessage(ctx context.Context, dm *protocol.DispatcherMessage) {
+	r.msgCh <- dm
 }
 
-func (r *logicRepo) pushChatMessageToKafka(ctx context.Context, chatMessage *protocol.ChatMessage) (err error) {
-	b, err := proto.Marshal(chatMessage)
+func (r *logicRepo) pushMessage(ctx context.Context, dm *protocol.DispatcherMessage) (err error) {
+	b, err := proto.Marshal(dm)
 	if err != nil {
 		return
 	}
 	m := &sarama.ProducerMessage{
-		Topic: "topic_chat_message",
-		//Key:   sarama.StringEncoder(keys[0]),
+		Topic: "topic_dispatcher_message",
 		Value: sarama.ByteEncoder(b),
 	}
 	r.data.kafkaCli.SendMessageAsync(m)

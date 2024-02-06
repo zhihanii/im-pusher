@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/zhihanii/im-pusher/api/dispatcher"
 	"github.com/zhihanii/im-pusher/api/protocol"
-	"github.com/zhihanii/im-pusher/internal/logic/rpc"
-	"github.com/zhihanii/im-pusher/pkg/gopool"
 	"github.com/zhihanii/im-pusher/pkg/set"
 	"github.com/zhihanii/im-pusher/pkg/timingwheel"
 	"github.com/zhihanii/loadbalance"
 	"github.com/zhihanii/retry"
+	"github.com/zhihanii/taskpool"
 	"github.com/zhihanii/zlog"
 	"google.golang.org/protobuf/proto"
 	"strconv"
@@ -163,7 +161,7 @@ func (h *LogicHandler) Receive(ctx context.Context, memberId uint64, m *protocol
 		return
 
 	case protocol.MAck:
-		zlog.Infof("收到来自member:%d的mack", memberId)
+		//zlog.Infof("收到来自member:%d的mack", memberId)
 		keys := bytes.Split(m.Data, []byte{';'})
 		for _, k := range keys {
 			v, ok := h.groupAckMap.Load(string(k))
@@ -203,55 +201,39 @@ func (h *LogicHandler) Receive(ctx context.Context, memberId uint64, m *protocol
 }
 
 func (h *LogicHandler) HandleChat(ctx context.Context, m *protocol.Message) (ackMsg *protocol.Message, err error) {
-	chatMessage := new(protocol.ChatMessage)
+	chatMessage := new(protocol.ChatSendMessage)
 	err = proto.Unmarshal(m.Data, chatMessage)
 	if err != nil {
 		zlog.Errorf("unmarshal:%v", err)
 		return
 	}
 
-	//startTime := time.Now()
-	//err = h.repo.StoreChatMessage(ctx, m.Sequence, chatMessage)
-	//if err != nil {
-	//	zlog.Errorf("store chat message:%v", err)
-	//	return
-	//}
+	dispatcherMessage := &protocol.DispatcherMessage{
+		Receivers: []uint64{chatMessage.To},
+		Operation: m.Operation,
+		Sequence:  m.Sequence,
+	}
 
-	//err = h.repo.PushChatMessageToKafka(ctx, chatMessage)
-	//if err != nil {
-	//	zlog.Errorf("push chat message to kafka:%v", err)
-	//	return
-	//}
+	chatReceiveMessage := &protocol.ChatReceiveMessage{}
+	chatReceiveMessage.ConversationId = chatMessage.ConversationId
+	chatReceiveMessage.From = chatMessage.From
+	chatReceiveMessage.Content = chatMessage.Content
 
-	//endTime := time.Now()
-	//responseTime := endTime.Sub(startTime)
-	//zlog.Infof("store chat message response time:%d ms", responseTime.Milliseconds())
+	dispatcherMessage.Data, err = proto.Marshal(chatReceiveMessage)
+	if err != nil {
+		zlog.Errorf("marshal:%v", err)
+		return
+	}
 
 	//异步推送消息
 	ctx1 := context.Background()
-	st1 := time.Now()
-	submitErr := gopool.Submit(ctx1, func() {
-		st2 := time.Now()
-		h.repo.PushChatMessageToKafka(ctx, chatMessage)
-		et2 := time.Now()
-		rt2 := et2.Sub(st2)
-		zlog.Infof("push to kafka响应时间:%d ms", rt2.Milliseconds())
-
-		st := time.Now()
-		//zlog.Infoln("正在异步推送消息")
-		ackKey := key(chatMessage.From, chatMessage.To, m.Sequence)
+	ackKey := key(chatMessage.ConversationId, chatMessage.From, m.Sequence)
+	submitErr := taskpool.Submit(ctx1, func() {
 		err1 := h.retryer.Do(ctx1, func() error {
-			_, err2 := rpc.Push(ctx1, &dispatcher.PushReq{
-				Receivers: []uint64{chatMessage.To},
-				Message:   m,
-			})
-			if err2 != nil {
-				zlog.Errorf("dispatcher client push:%v", err2)
-				return err2
-			}
+			h.repo.PushMessage(ctx1, dispatcherMessage)
 			fail := make(chan struct{})
 			success := make(chan struct{})
-			waitAckDuration := 5 * time.Second
+			waitAckDuration := 25 * time.Second
 			task := h.timer.Add(waitAckDuration, func() {
 				fail <- struct{}{}
 			})
@@ -276,21 +258,15 @@ func (h *LogicHandler) HandleChat(ctx context.Context, m *protocol.Message) (ack
 		}
 
 		err1 = h.retryer.Do(ctx1, func() error {
-			notifyMessage := &protocol.Message{
-				Operation: protocol.Notify,
-				Data:      []byte(ackKey),
-			}
-			_, err2 := rpc.Push(ctx1, &dispatcher.PushReq{
-				Receivers: []uint64{chatMessage.From},
-				Message:   notifyMessage,
-			})
-			if err2 != nil {
-				zlog.Errorf("dispatcher client push:%v", err2)
-				return err2
-			}
+			dispatcherMessage1 := &protocol.DispatcherMessage{}
+			dispatcherMessage1.Receivers = []uint64{chatMessage.From}
+			dispatcherMessage1.Operation = protocol.Notify
+			dispatcherMessage1.Sequence = 0
+			dispatcherMessage1.Data = []byte(ackKey)
+			h.repo.PushMessage(ctx1, dispatcherMessage1)
 			fail := make(chan struct{})
 			success := make(chan struct{})
-			waitAckDuration := 5 * time.Second
+			waitAckDuration := 25 * time.Second
 			task := h.timer.Add(waitAckDuration, func() {
 				fail <- struct{}{}
 			})
@@ -313,24 +289,18 @@ func (h *LogicHandler) HandleChat(ctx context.Context, m *protocol.Message) (ack
 			zlog.Errorf("retry do:%v", err1)
 			return
 		}
-		et := time.Now()
-		rt := et.Sub(st)
-		zlog.Infof("异步消息推送所用时间:%d ms", rt.Milliseconds())
 	})
 	if submitErr != nil {
-		if errors.Is(submitErr, gopool.ErrPoolIsOverload) {
+		if errors.Is(submitErr, taskpool.ErrPoolIsOverload) {
 			zlog.Infof("submit:go pool is overload")
 		}
+		return nil, submitErr
 	}
-	et1 := time.Now()
-	rt1 := et1.Sub(st1)
-	zlog.Infof("submit response time:%d ms", rt1.Milliseconds())
 
 	ackMsg = &protocol.Message{
 		Operation: protocol.Ack,
-		Data:      []byte(fmt.Sprintf("%d:%d:%d", chatMessage.From, chatMessage.To, m.Sequence)),
+		Data:      []byte(ackKey),
 	}
-
 	return
 }
 
@@ -363,20 +333,20 @@ func (h *LogicHandler) HandleGroupChat(ctx context.Context, memberId uint64, m *
 	s := set.New(users...)
 	h.groupAckMap.Store(ackKey, s)
 	leftUsers := users
-	submitErr := gopool.Submit(ctx1, func() {
+	submitErr := taskpool.Submit(ctx1, func() {
 		err1 := h.retryer.Do(ctx1, func() error {
-			offlineMembers, err2 := rpc.Push(ctx1, &dispatcher.PushReq{
-				Receivers: leftUsers,
-				Message:   m,
-			})
-			if err2 != nil {
-				zlog.Errorf("dispatch client push:%v", err2)
-				return err2
-			}
+			//offlineMembers, err2 := rpc.Push(ctx1, &dispatcher.PushReq{
+			//	Receivers: leftUsers,
+			//	Message:   m,
+			//})
+			//if err2 != nil {
+			//	zlog.Errorf("dispatch client push:%v", err2)
+			//	return err2
+			//}
 
-			if len(offlineMembers) > 0 {
-				s.Remove(offlineMembers...)
-			}
+			//if len(offlineMembers) > 0 {
+			//	s.Remove(offlineMembers...)
+			//}
 
 			waitAckDuration := 30 * time.Second
 			select {
@@ -397,7 +367,7 @@ func (h *LogicHandler) HandleGroupChat(ctx context.Context, memberId uint64, m *
 		}
 	})
 	if submitErr != nil {
-		if errors.Is(submitErr, gopool.ErrPoolIsOverload) {
+		if errors.Is(submitErr, taskpool.ErrPoolIsOverload) {
 			zlog.Infof("submit:go pool is overload")
 		}
 	}
@@ -409,11 +379,20 @@ func (h *LogicHandler) HandleGroupChat(ctx context.Context, memberId uint64, m *
 	return
 }
 
-func key(mid1, mid2 uint64, seq uint32) string {
-	return fmt.Sprintf("%d:%d:%d", mid1, mid2, seq)
+func key(id1, id2 uint64, seq uint32) string {
+	return fmt.Sprintf("%d:%d:%d", id1, id2, seq)
 }
 
 type element struct {
 	task    *timingwheel.Task
 	success chan struct{}
 }
+
+//func (e *element) reset() {
+//	e.task = nil
+//}
+//
+//func (e *element) Recycle() {
+//	e.reset()
+//	elementPool.Put(e)
+//}

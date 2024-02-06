@@ -10,7 +10,6 @@ import (
 	"github.com/zhihanii/im-pusher/internal/logic/conf"
 	"github.com/zhihanii/im-pusher/internal/logic/data"
 	"github.com/zhihanii/im-pusher/internal/logic/data/kafka"
-	"github.com/zhihanii/im-pusher/internal/logic/rpc"
 	"github.com/zhihanii/im-pusher/internal/logic/service"
 	"github.com/zhihanii/loadbalance"
 	"github.com/zhihanii/registry"
@@ -40,7 +39,7 @@ func (s preparedServer) Run() error {
 	s.grpcServer.Run()
 	_ = s.httpServer.Run()
 
-	rpc.Init(s.etcdClient)
+	//rpc.Init(s.etcdClient)
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
